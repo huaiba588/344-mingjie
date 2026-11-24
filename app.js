@@ -100,6 +100,7 @@
   let queue = [];
   let studyIndex = 0;
   let currentFilter = 'all';
+  let currentCategory = 'all';
   let currentModalId = null;
   let toastTimer = null;
 
@@ -214,6 +215,8 @@
     $('#streakCount').textContent = streakCount();
     $('#streakPill').textContent = `🔥 ${streakCount()} 天`;
     $('#favCount').textContent = state.favorites.length;
+    $('#keyCount').textContent = DATA.filter(x => x.category === '重点').length;
+    $('#knowCount').textContent = DATA.filter(x => x.category === '了解').length;
     const d = new Date();
     $('#todayLabel').textContent = `${d.getMonth() + 1} 月 ${d.getDate()} 日 · ${['周日','周一','周二','周三','周四','周五','周六'][d.getDay()]}`;
     const learned = learnedCount();
@@ -244,22 +247,25 @@
 
   function buildQueue() {
     ensureDay();
-    const due = DATA
+    const source = DATA.filter(item => currentCategory === 'all' || item.category === currentCategory);
+    const due = source
       .filter(item => isDue(progressOf(item.id)))
       .sort((a, b) => (progressOf(a.id)?.due || '').localeCompare(progressOf(b.id)?.due || ''));
     let dueList = state.settings.order === 'random' ? shuffle(due) : due;
     dueList = dueList.slice(0, state.settings.reviewLimit);
 
-    let fresh = DATA.filter(item => !progressOf(item.id));
+    let fresh = source.filter(item => !progressOf(item.id));
     if (state.settings.order === 'random') fresh = shuffle(fresh);
     fresh = fresh.slice(0, newLeft());
 
     let combined = [...dueList, ...fresh];
     if (state.settings.order === 'random') combined = shuffle(combined);
+    if (currentCategory === 'all') combined.sort((a, b) => (a.category === '重点' ? 0 : 1) - (b.category === '重点' ? 0 : 1));
     return combined;
   }
 
-  function startStudy(force = false) {
+  function startStudy(force = false, category = null) {
+    if (category) currentCategory = category;
     if (force || !queue.length) {
       queue = buildQueue();
       studyIndex = 0;
@@ -288,7 +294,7 @@
     const p = progressOf(item.id);
     $('#studyProgressText').textContent = `${studyIndex + 1} / ${queue.length}`;
     $('#studyProgressBar').style.width = `${Math.round(studyIndex / queue.length * 100)}%`;
-    $('#studyMode').textContent = p ? '复习' : '新词';
+    $('#studyMode').textContent = `${currentCategory === 'all' ? '' : currentCategory + ' · '}${p ? '复习' : '新词'}`;
     $('#studyChapter').textContent = chapterLabel(item.chapter);
     $('#studyTerm').textContent = item.term;
     $('#studyAnswer').textContent = answerOf(item);
@@ -374,6 +380,7 @@
     if (currentFilter === 'fuzzy') items = items.filter(i => statusOf(i.id) === 'fuzzy');
     if (currentFilter === 'mastered') items = items.filter(i => statusOf(i.id) === 'mastered');
     if (currentFilter === 'fav') items = items.filter(i => state.favorites.includes(i.id));
+    if (currentCategory !== 'all') items = items.filter(i => i.category === currentCategory);
 
     if (q) {
       items = items.filter(i =>
@@ -553,7 +560,8 @@
       else showScreen(name);
     }));
     $('#backBtn').addEventListener('click', () => showScreen('home'));
-    $('#startBtn').addEventListener('click', () => startStudy(true));
+    $('#startBtn').addEventListener('click', () => { currentCategory = 'all'; startStudy(true); });
+    $$('[data-start-cat]').forEach(b => b.addEventListener('click', () => startStudy(true, b.dataset.startCat)));
     $('#emptyHomeBtn').addEventListener('click', () => showScreen('home'));
 
     $('#revealBtn').addEventListener('click', revealAnswer);
@@ -594,6 +602,13 @@
       if (!chip) return;
       currentFilter = chip.dataset.filter;
       $$('.chip', $('#filterChips')).forEach(c => c.classList.toggle('active', c === chip));
+      renderLibrary();
+    });
+    $('#catChips').addEventListener('click', (e) => {
+      const c = e.target.closest('.chip');
+      if (!c) return;
+      currentCategory = c.dataset.cat;
+      $$('.chip', $('#catChips')).forEach(x => x.classList.toggle('active', x === c));
       renderLibrary();
     });
     $('#termList').addEventListener('click', (e) => {
